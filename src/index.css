@@ -137,7 +137,7 @@
 .field select {
   appearance: none;
   padding-right: 42px;
-  background: white url("/assets/64f6e.svg") no-repeat right 14px center / 16px 16px;
+background: white var(--select-arrow-icon) no-repeat right 14px center / 16px 16px;
 }
 .field select:disabled,
 .field input:disabled {

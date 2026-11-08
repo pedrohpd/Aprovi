@@ -6,22 +6,24 @@ import path from "node:path";
 
 import siteConfiguration from "./.figma/make/site.json";
 
-
-export default defineConfig({
-  plugins: [react()],
-  base: 'https://github.com/pedrohpd/Aprovi', // Substitua pelo nome exato do repositório no GitHub
-})
-
 // Vite config — https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   // .figma/make/deploy-preview passes `--mode development` for cached-preview builds.
   const emitSourcemaps = mode === "development";
 
   return {
-    base: process.env.FIGMA_PUBLIC_URL ? `${process.env.FIGMA_PUBLIC_URL}/` : "/",
+    base: process.env.FIGMA_PUBLIC_URL ? `${process.env.FIGMA_PUBLIC_URL}/` : "/Aprovi/",
     build: {
       sourcemap: emitSourcemaps ? "inline" : false,
       minify: !emitSourcemaps,
+      rollupOptions: {
+        output: {
+          // Garante que nenhuma pasta ou arquivo gerado comece com sublinhados "_"
+          assetFileNames: "assets/[name]-[hash][extname]",
+          chunkFileNames: "assets/[name]-[hash].js",
+          entryFileNames: "assets/[name]-[hash].js",
+        }
+      }
     },
     plugins: [
       react(),
