@@ -31,6 +31,7 @@ type FieldProps = {
   value: string;
   onChange?: (value: string) => void;
   type?: string;
+  placeholder?: string;
   required?: boolean;
   readOnly?: boolean;
   disabled?: boolean;
@@ -70,7 +71,12 @@ export function SelectField({
   return (
     <label className="field">
       <span>{label}</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)} required={required} disabled={disabled}>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        required={required}
+        disabled={disabled}
+      >
         {placeholder !== undefined && (
           <option value="" disabled>
             {placeholder}
@@ -159,7 +165,13 @@ export function DialogShell({
       role="presentation"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
-      <form className={`dialog dialog-${kind}`} onSubmit={onSubmit} role="dialog" aria-modal="true" aria-label={title}>
+      <form
+        className={`dialog dialog-${kind}`}
+        onSubmit={onSubmit}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+      >
         <div className="dialog-head">
           <h2>{title}</h2>
           <button type="button" onClick={onClose} aria-label="Fechar">

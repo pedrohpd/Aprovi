@@ -8,23 +8,61 @@ export type User = {
   role: Role;
 };
 
+export type MaterialFile = {
+  id: string;
+  name: string;
+  url?: string;
+};
+
+export type MaterialCategory = {
+  id: string;
+  name: string;
+  files: MaterialFile[];
+};
+
+export type ClassTask = {
+  id: string;
+  title: string;
+  fileName?: string;
+  url?: string;
+};
+
 export type Classroom = {
   code: string;
   name: string;
   subject: string;
   color: string;
   teacherId: string;
+  categories?: MaterialCategory[];
+  tasks?: ClassTask[];
 };
 
 /** `start` / `end` usam o formato local "YYYY-MM-DDTHH:mm" (mesmo valor do input datetime-local). */
 export type CalEvent = {
   id: string;
   title: string;
+  description?: string;
   subject: string;
   classCode: string | null;
   ownerId: string;
   start: string;
   end: string;
+  completedBy?: string[];
+};
+
+export type MaterialType = "document" | "link" | "video" | "exercise";
+
+export type Material = {
+  id: string;
+  title: string;
+  description?: string;
+  classCode: string;
+  subject: string;
+  type: MaterialType;
+  url?: string;
+  fileName?: string;
+  createdAt: string;
+  authorId: string;
 };
 
 export type Db = {
@@ -33,6 +71,7 @@ export type Db = {
   /** id do aluno -> códigos das turmas em que entrou */
   memberships: Record<string, string[]>;
   events: CalEvent[];
+  materials: Material[];
 };
 
 /* ------------------------------------------------------------------ */
@@ -111,7 +150,8 @@ export function nextFullHour(base = new Date()) {
 
 const STORAGE_KEY = "aprov-db-v1";
 
-export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+export const uid = () =>
+  Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
 function seed(): Db {
   const now = new Date();
@@ -120,7 +160,13 @@ function seed(): Db {
 
   return {
     users: [
-      { id: "u-aluno", name: "Ana Souza", email: "aluno@aprov.com", password: "123456", role: "student" },
+      {
+        id: "u-aluno",
+        name: "Ana Souza",
+        email: "aluno@aprov.com",
+        password: "123456",
+        role: "student",
+      },
       {
         id: "u-prof",
         name: "Carlos Lima",
@@ -130,28 +176,112 @@ function seed(): Db {
       },
     ],
     classes: [
-      { code: "HGSS", name: "Matemática/Cursinho", subject: "Matemática", color: "#438fdd", teacherId: "u-prof" },
-      { code: "PKMN", name: "Geometria - 2o Ano", subject: "Matemática", color: "#7c72f7", teacherId: "u-prof" },
+      {
+        code: "HGSS",
+        name: "Matemática/Cursinho",
+        subject: "Matemática",
+        color: "#438fdd",
+        teacherId: "u-prof",
+        categories: [
+          {
+            id: "cat-conjuntos",
+            name: "Conjuntos",
+            files: [
+              { id: "f-c1", name: "conjuntos01.pdf" },
+              { id: "f-c2", name: "conjuntos02.pdf" },
+            ],
+          },
+          {
+            id: "cat-funcoes",
+            name: "Funções",
+            files: [],
+          },
+        ],
+        tasks: [
+          { id: "t-1", title: "01 - lista_conjuntos", fileName: "lista_conjuntos.pdf" },
+          { id: "t-2", title: "02 - lista_funcoes", fileName: "lista_funcoes.pdf" },
+        ],
+      },
+      {
+        code: "PKMN",
+        name: "Geometria - 2o Ano",
+        subject: "Matemática",
+        color: "#7c72f7",
+        teacherId: "u-prof",
+        categories: [
+          {
+            id: "cat-geom",
+            name: "Geometria Espacial",
+            files: [{ id: "f-g1", name: "prismas_e_piramides.pdf" }],
+          },
+        ],
+        tasks: [{ id: "t-g1", title: "01 - lista_geometria", fileName: "lista_geometria.pdf" }],
+      },
     ],
     memberships: { "u-aluno": ["HGSS", "PKMN"] },
     events: [
       {
         id: "e-funcoes",
-        title: "Entrega: Funções",
+        title: "Entrega: Funções Afins e Quadráticas",
+        description:
+          "Resolver os exercícios do capítulo 3 (páginas 42 a 46). Atenção ao cálculo de raízes e vértice da parábola.",
         subject: "Matemática",
         classCode: "HGSS",
         ownerId: "u-prof",
         start: at(0, 8, 15),
         end: at(0, 9, 15),
+        completedBy: [],
       },
       {
         id: "e-geometria",
-        title: "Entrega: Geometria",
+        title: "Entrega: Geometria Espacial",
+        description:
+          "Lista preparatória sobre prismas retos, pirâmides e cálculo de volume em situações práticas do ENEM.",
         subject: "Matemática",
         classCode: "PKMN",
         ownerId: "u-prof",
         start: at(9, 13, 0),
         end: at(9, 14, 0),
+        completedBy: ["u-aluno"],
+      },
+    ],
+    materials: [
+      {
+        id: "m-funcoes-apostila",
+        title: "Apostila Completa - Funções de 1º e 2º Graus",
+        description:
+          "Resumo teórico, fórmulas comentadas e coletânea com mais de 40 questões resolvidas dos principais vestibulares.",
+        classCode: "HGSS",
+        subject: "Matemática",
+        type: "document",
+        fileName: "Apostila_Funcoes_Cursinho.pdf",
+        url: "https://exemplo.com/materiais/apostila-funcoes.pdf",
+        createdAt: at(-3, 10, 0),
+        authorId: "u-prof",
+      },
+      {
+        id: "m-funcoes-video",
+        title: "Videoaula: Resolução de Questões ENEM sobre Funções",
+        description:
+          "Revisão detalhada de interpretação de gráficos e equações com dicas para otimizar o tempo de prova.",
+        classCode: "HGSS",
+        subject: "Matemática",
+        type: "video",
+        url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        createdAt: at(-2, 14, 30),
+        authorId: "u-prof",
+      },
+      {
+        id: "m-geometria-lista",
+        title: "Lista de Exercícios: Trigonometria e Triângulos",
+        description: "Material prático para fixação de fórmulas de seno, cosseno e lei das áreas.",
+        classCode: "PKMN",
+        subject: "Matemática",
+        type: "exercise",
+        fileName: "Lista_Fixacao_Trigonometria.pdf",
+        url: "https://exemplo.com/materiais/lista-trigonometria.pdf",
+        createdAt: at(-1, 9, 0),
+        authorId: "u-prof",
       },
     ],
   };
@@ -168,6 +298,18 @@ export function loadDb(): Db {
         Array.isArray(parsed.events) &&
         parsed.memberships
       ) {
+        if (!Array.isArray(parsed.materials)) {
+          parsed.materials = seed().materials;
+        }
+        parsed.classes = parsed.classes.map((c) => {
+          const s = seed().classes.find((x) => x.code === c.code);
+          return {
+            ...c,
+            categories:
+              c.categories && c.categories.length > 0 ? c.categories : (s?.categories ?? []),
+            tasks: c.tasks && c.tasks.length > 0 ? c.tasks : (s?.tasks ?? []),
+          };
+        });
         return parsed;
       }
     }
@@ -193,7 +335,10 @@ const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 export function makeClassCode(existing: Classroom[]) {
   for (;;) {
-    const code = Array.from({ length: 4 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join("");
+    const code = Array.from(
+      { length: 4 },
+      () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)],
+    ).join("");
     if (!existing.some((c) => c.code === code)) return code;
   }
 }
@@ -219,7 +364,9 @@ export const classesOf = (db: Db, user: User): Classroom[] =>
 export function visibleEvents(db: Db, user: User): CalEvent[] {
   const joined = new Set(db.memberships[user.id] ?? []);
   return db.events.filter(
-    (e) => e.ownerId === user.id || (user.role === "student" && e.classCode !== null && joined.has(e.classCode)),
+    (e) =>
+      e.ownerId === user.id ||
+      (user.role === "student" && e.classCode !== null && joined.has(e.classCode)),
   );
 }
 
@@ -230,6 +377,48 @@ export function eventMeta(ev: CalEvent, classes: Classroom[]) {
 
 /** "Entrega: Funções" vira "Funções" na lista de tarefas. */
 export const taskName = (title: string) => title.replace(/^Entrega:\s*/i, "");
+
+export const materialsOfClass = (db: Db, classCode: string): Material[] =>
+  (db.materials ?? []).filter((m) => m.classCode === classCode);
+
+export const eventsOfClass = (db: Db, classCode: string): CalEvent[] =>
+  db.events.filter((e) => e.classCode === classCode);
+
+export function membersOfClass(db: Db, classCode: string): User[] {
+  const studentIds = Object.entries(db.memberships)
+    .filter(([, codes]) => codes.includes(classCode))
+    .map(([id]) => id);
+  return db.users.filter((u) => studentIds.includes(u.id));
+}
+
+export const isTaskCompleted = (event: CalEvent, userId: string) =>
+  Boolean(event.completedBy?.includes(userId));
+
+export function materialTypeLabel(type: MaterialType): string {
+  switch (type) {
+    case "document":
+      return "Documento / PDF";
+    case "video":
+      return "Videoaula";
+    case "link":
+      return "Link Externo";
+    case "exercise":
+      return "Lista de Exercícios";
+  }
+}
+
+export function materialTypeBadge(type: MaterialType): { bg: string; fg: string; label: string } {
+  switch (type) {
+    case "document":
+      return { bg: "#e6f0fa", fg: "#1a56db", label: "Documento / PDF" };
+    case "video":
+      return { bg: "#fde8e8", fg: "#c81e1e", label: "Videoaula" };
+    case "link":
+      return { bg: "#def7ec", fg: "#03543f", label: "Link" };
+    case "exercise":
+      return { bg: "#edebfe", fg: "#5521b5", label: "Exercício" };
+  }
+}
 
 /* ------------------------------------------------------------------ */
 /* Calendário: posicionamento no dia                                   */
@@ -280,7 +469,13 @@ export function layoutDay(events: CalEvent[], day: Date): Segment[] {
     if (lane === -1) lane = laneEnds.length;
     laneEnds[lane] = visualEnd;
     clusterEnd = Math.max(clusterEnd, visualEnd);
-    cluster.push({ event: item.event, startMin: item.startMin, endMin: item.endMin, lane, lanes: 1 });
+    cluster.push({
+      event: item.event,
+      startMin: item.startMin,
+      endMin: item.endMin,
+      lane,
+      lanes: 1,
+    });
   }
   flush();
   return out;

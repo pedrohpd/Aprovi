@@ -53,8 +53,17 @@ export function Auth({
     <main className={`auth page-enter ${kind}`}>
       <Logo />
       <form className="auth-card" onSubmit={submit}>
-        {kind === "signup" && <Field label="Nome" value={name} onChange={setName} required autoComplete="name" />}
-        <Field label="Email" type="email" value={email} onChange={setEmail} required autoComplete="email" />
+        {kind === "signup" && (
+          <Field label="Nome" value={name} onChange={setName} required autoComplete="name" />
+        )}
+        <Field
+          label="Email"
+          type="email"
+          value={email}
+          onChange={setEmail}
+          required
+          autoComplete="email"
+        />
         {kind === "signup" && (
           <SelectField
             label="Tipo de Conta"

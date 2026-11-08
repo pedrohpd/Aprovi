@@ -1,13 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Auth } from "./Auth";
-import { DateDialog, EventDialog, EventDraft, JoinClassDialog, NewClassDialog, TimerDialog } from "./Dialogs";
+import {
+  AddCategoryDialog,
+  AddMaterialDialog,
+  AddTaskDialog,
+  DateDialog,
+  EventDialog,
+  EventDraft,
+  JoinClassDialog,
+  MaterialDialog,
+  MaterialDraft,
+  MaterialViewDialog,
+  NewClassDialog,
+  TimerDialog,
+} from "./Dialogs";
 import {
   CalEvent,
+  Classroom,
   Db,
+  Material,
   Role,
   User,
   classesOf,
+  eventsOfClass,
   loadDb,
+  materialsOfClass,
+  membersOfClass,
   nextFullHour,
   parseLocal,
   pickClassColor,
@@ -17,7 +35,7 @@ import {
   uid,
   visibleEvents,
 } from "./data";
-import { Calendar, Classes, Profile, Tasks, Timer } from "./screens";
+import { Calendar, ClassDetail, Classes, Profile, Tasks, Timer } from "./screens";
 import { allowedScreens, BottomNav, Screen, Toast } from "./ui";
 import { useTimer } from "./useTimer";
 
@@ -25,7 +43,25 @@ type Modal =
   | { type: "timer" }
   | { type: "date" }
   | { type: "class" }
-  | { type: "event"; id?: string; title: string; preset?: { start: string; end: string; subject?: string } }
+  | { type: "addCategory"; classCode: string }
+  | { type: "addMaterial"; classCode: string; categoryName: string }
+  | { type: "addTask"; classCode: string }
+  | {
+      type: "event";
+      id?: string;
+      title: string;
+      preset?: { start: string; end: string; subject?: string; classCode?: string };
+    }
+  | {
+      type: "material";
+      id?: string;
+      title: string;
+      preset?: { classCode: string; subject: string };
+    }
+  | {
+      type: "materialView";
+      material: Material;
+    }
   | null;
 
 const emailTaken = (db: Db, email: string, exceptId?: string) =>
@@ -36,6 +72,7 @@ export default function App() {
   const [userId, setUserId] = useState<string | null>(null);
   const [authKind, setAuthKind] = useState<"login" | "signup">("login");
   const [screen, setScreen] = useState<Screen>("timer");
+  const [selectedClassCode, setSelectedClassCode] = useState<string | null>(null);
   const [modal, setModal] = useState<Modal>(null);
   const [day, setDay] = useState(() => startOfDay(new Date()));
   const [openSubject, setOpenSubject] = useState("Matemática");
@@ -51,7 +88,11 @@ export default function App() {
   }, []);
 
   const timer = useTimer((finished) =>
-    notify(finished === "focus" ? "Pomodoro concluído! Hora da pausa." : "Pausa encerrada. Vamos voltar a estudar!"),
+    notify(
+      finished === "focus"
+        ? "Pomodoro concluído! Hora da pausa."
+        : "Pausa encerrada. Vamos voltar a estudar!",
+    ),
   );
 
   const user = db.users.find((u) => u.id === userId) ?? null;
@@ -61,6 +102,7 @@ export default function App() {
   const enter = (u: User) => {
     setUserId(u.id);
     setScreen(u.role === "teacher" ? "calendar" : "timer");
+    setSelectedClassCode(null);
     setDay(startOfDay(new Date()));
     setModal(null);
   };
@@ -82,6 +124,7 @@ export default function App() {
 
   const logout = () => {
     setUserId(null);
+    setSelectedClassCode(null);
     setAuthKind("login");
     setModal(null);
   };
@@ -105,9 +148,20 @@ export default function App() {
 
   const goTo = (next: Screen) => {
     if (allowedScreens(user.role).includes(next)) {
-      setScreen(next);
+      if (next === "classes" && screen === "classes" && selectedClassCode) {
+        setSelectedClassCode(null);
+      } else {
+        setScreen(next);
+        setSelectedClassCode(null);
+      }
       setModal(null);
     }
+  };
+
+  const openClass = (code: string) => {
+    setSelectedClassCode(code);
+    setScreen("classes");
+    setModal(null);
   };
 
   const saveProfile = (data: { name: string; email: string; password: string }) => {
@@ -116,7 +170,12 @@ export default function App() {
       ...d,
       users: d.users.map((u) =>
         u.id === user.id
-          ? { ...u, name: data.name, email: data.email.trim(), password: data.password || u.password }
+          ? {
+              ...u,
+              name: data.name,
+              email: data.email.trim(),
+              password: data.password || u.password,
+            }
           : u,
       ),
     }));
@@ -139,7 +198,10 @@ export default function App() {
       preset = hourPreset(day, 8);
     } else {
       const start = nextFullHour();
-      preset = { start: toLocalInput(start), end: toLocalInput(new Date(start.getTime() + 60 * 60 * 1000)) };
+      preset = {
+        start: toLocalInput(start),
+        end: toLocalInput(new Date(start.getTime() + 60 * 60 * 1000)),
+      };
     }
     if (from === "tasks" && openSubject) preset.subject = openSubject;
     setModal({ type: "event", title: from === "tasks" ? "Nova tarefa" : "Novo evento", preset });
@@ -156,7 +218,13 @@ export default function App() {
     }));
     if (!isTeacher) setOpenSubject(draft.subject);
     if (screen === "calendar") setDay(startOfDay(parseLocal(draft.start)));
-    notify(editingId ? "Evento atualizado." : screen === "tasks" ? "Tarefa adicionada." : "Evento adicionado.");
+    notify(
+      editingId
+        ? "Evento atualizado."
+        : screen === "tasks"
+          ? "Tarefa adicionada."
+          : "Evento adicionado.",
+    );
     closeModal();
   };
 
@@ -165,6 +233,54 @@ export default function App() {
     const id = modal.id;
     setDb((d) => ({ ...d, events: d.events.filter((e) => e.id !== id) }));
     notify("Evento excluído.");
+    closeModal();
+  };
+
+  const toggleTask = (taskId: string) => {
+    setDb((d) => ({
+      ...d,
+      events: d.events.map((e) => {
+        if (e.id !== taskId) return e;
+        const completed = e.completedBy ?? [];
+        const isDone = completed.includes(user.id);
+        const nextCompleted = isDone
+          ? completed.filter((id) => id !== user.id)
+          : [...completed, user.id];
+        return { ...e, completedBy: nextCompleted };
+      }),
+    }));
+    notify("Status da tarefa atualizado.");
+  };
+
+  const saveMaterial = (draft: MaterialDraft) => {
+    if (modal?.type !== "material") return;
+    const editingId = modal.id;
+    setDb((d) => ({
+      ...d,
+      materials: editingId
+        ? (d.materials ?? []).map((m) => (m.id === editingId ? { ...m, ...draft } : m))
+        : [
+            ...(d.materials ?? []),
+            {
+              id: uid(),
+              authorId: user.id,
+              createdAt: toLocalInput(new Date()),
+              ...draft,
+            },
+          ],
+    }));
+    notify(editingId ? "Material atualizado." : "Material adicionado.");
+    closeModal();
+  };
+
+  const deleteMaterial = () => {
+    if (modal?.type !== "material" || !modal.id) return;
+    const id = modal.id;
+    setDb((d) => ({
+      ...d,
+      materials: (d.materials ?? []).filter((m) => m.id !== id),
+    }));
+    notify("Material excluído.");
     closeModal();
   };
 
@@ -185,6 +301,7 @@ export default function App() {
     }));
     notify(`Turma criada! Compartilhe o código ${data.code}.`);
     closeModal();
+    openClass(data.code);
   };
 
   const joinClass = (raw: string) => {
@@ -199,6 +316,7 @@ export default function App() {
     setOpenSubject(found.subject);
     notify(`Você entrou em ${found.name}.`);
     closeModal();
+    openClass(found.code);
     return null;
   };
 
@@ -210,7 +328,94 @@ export default function App() {
     if (!navigator.clipboard) notify(`Código da turma: ${code}`);
   };
 
-  const editingEvent = modal?.type === "event" && modal.id ? db.events.find((e) => e.id === modal.id) : undefined;
+  const handleAddCategory = (categoryName: string) => {
+    if (modal?.type !== "addCategory") return;
+    const code = modal.classCode;
+    setDb((d) => ({
+      ...d,
+      classes: d.classes.map((c) => {
+        if (c.code !== code) return c;
+        const existing = c.categories ?? [];
+        if (existing.some((cat) => cat.name.toLowerCase() === categoryName.toLowerCase())) {
+          return c;
+        }
+        return {
+          ...c,
+          categories: [...existing, { id: uid(), name: categoryName, files: [] }],
+        };
+      }),
+    }));
+    notify(`Categoria "${categoryName}" adicionada.`);
+    closeModal();
+  };
+
+  const handleAddMaterial = (fileName: string) => {
+    if (modal?.type !== "addMaterial") return;
+    const { classCode, categoryName } = modal;
+    setDb((d) => ({
+      ...d,
+      classes: d.classes.map((c) => {
+        if (c.code !== classCode) return c;
+        const existing = c.categories ?? [];
+        return {
+          ...c,
+          categories: existing.map((cat) => {
+            if (cat.name !== categoryName) return cat;
+            return {
+              ...cat,
+              files: [...cat.files, { id: uid(), name: fileName }],
+            };
+          }),
+        };
+      }),
+    }));
+    notify(`Material "${fileName}" adicionado em ${categoryName}.`);
+    closeModal();
+  };
+
+  const handleAddTask = (title: string, fileName: string) => {
+    if (modal?.type !== "addTask") return;
+    const code = modal.classCode;
+    setDb((d) => ({
+      ...d,
+      classes: d.classes.map((c) => {
+        if (c.code !== code) return c;
+        const existing = c.tasks ?? [];
+        const nextNum = String(existing.length + 1).padStart(2, "0");
+        const taskTitle = `${nextNum} - ${title.replace(/^\d+\s*-\s*/, "")}`;
+        return {
+          ...c,
+          tasks: [...existing, { id: uid(), title: taskTitle, fileName }],
+        };
+      }),
+    }));
+    notify("Tarefa adicionada com sucesso.");
+    closeModal();
+  };
+
+  const handleOpenFile = (fileName: string) => {
+    const content = `Aprov! - Arquivo da Turma: ${activeClass?.name ?? ""}\nArquivo: ${fileName}\nData: ${new Date().toLocaleDateString("pt-BR")}`;
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    notify(`Abrindo ${fileName}...`);
+  };
+
+  const editingEvent =
+    modal?.type === "event" && modal.id ? db.events.find((e) => e.id === modal.id) : undefined;
+  const editingMaterial =
+    modal?.type === "material" && modal.id
+      ? (db.materials ?? []).find((m) => m.id === modal.id)
+      : undefined;
+  const activeClass = selectedClassCode
+    ? (db.classes.find((c) => c.code === selectedClassCode) ?? null)
+    : null;
 
   return (
     <main className="app-shell">
@@ -224,7 +429,7 @@ export default function App() {
           openSettings={() => setModal({ type: "timer" })}
         />
       )}
-      {screen === "tasks" && !isTeacher && (
+      {screen === "tasks" && (
         <Tasks
           events={events}
           classes={myClasses}
@@ -232,6 +437,7 @@ export default function App() {
           setOpen={setOpenSubject}
           onAdd={() => openNewEvent("tasks")}
           onOpen={(id) => setModal({ type: "event", id, title: "Editar evento" })}
+          onOpenClass={openClass}
         />
       )}
       {screen === "calendar" && (
@@ -246,15 +452,30 @@ export default function App() {
           onOpen={(id) => setModal({ type: "event", id, title: "Editar evento" })}
         />
       )}
-      {screen === "classes" && (
-        <Classes
-          classes={myClasses}
-          isTeacher={isTeacher}
-          onAdd={() => setModal({ type: "class" })}
-          onCopy={copyCode}
-        />
+      {screen === "classes" &&
+        (activeClass ? (
+          <ClassDetail
+            classroom={activeClass}
+            isTeacher={isTeacher}
+            onBack={() => setSelectedClassCode(null)}
+            onAddCategory={() => setModal({ type: "addCategory", classCode: activeClass.code })}
+            onAddMaterial={(categoryName) =>
+              setModal({ type: "addMaterial", classCode: activeClass.code, categoryName })
+            }
+            onAddTask={() => setModal({ type: "addTask", classCode: activeClass.code })}
+            onOpenFile={handleOpenFile}
+          />
+        ) : (
+          <Classes
+            classes={myClasses}
+            isTeacher={isTeacher}
+            onSelectClass={openClass}
+            onAdd={() => setModal({ type: "class" })}
+          />
+        ))}
+      {screen === "profile" && (
+        <Profile key={user.id} user={user} onSave={saveProfile} onLogout={logout} />
       )}
-      {screen === "profile" && <Profile key={user.id} user={user} onSave={saveProfile} onLogout={logout} />}
 
       <BottomNav active={screen} role={user.role} onGo={goTo} />
       <Toast message={toast} />
@@ -281,6 +502,35 @@ export default function App() {
           newTitle={modal.title}
           onSave={saveEvent}
           onDelete={deleteEvent}
+          onOpenClass={openClass}
+          onClose={closeModal}
+        />
+      )}
+      {modal?.type === "addCategory" && (
+        <AddCategoryDialog onAdd={handleAddCategory} onClose={closeModal} />
+      )}
+      {modal?.type === "addMaterial" && (
+        <AddMaterialDialog
+          categoryName={modal.categoryName}
+          onAdd={handleAddMaterial}
+          onClose={closeModal}
+        />
+      )}
+      {modal?.type === "addTask" && <AddTaskDialog onAdd={handleAddTask} onClose={closeModal} />}
+      {modal?.type === "material" && (
+        <MaterialDialog
+          classes={myClasses}
+          material={editingMaterial}
+          preset={modal.preset}
+          onSave={saveMaterial}
+          onDelete={deleteMaterial}
+          onClose={closeModal}
+        />
+      )}
+      {modal?.type === "materialView" && (
+        <MaterialViewDialog
+          material={modal.material}
+          classroom={db.classes.find((c) => c.code === modal.material.classCode)}
           onClose={closeModal}
         />
       )}

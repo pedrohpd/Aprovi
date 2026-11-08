@@ -4,6 +4,7 @@ import {
   Classroom,
   DEFAULT_SUBJECTS,
   HOUR_HEIGHT,
+  Material,
   SUBJECTS,
   User,
   eventMeta,
@@ -11,7 +12,9 @@ import {
   formatShortDate,
   formatTime,
   isSameDay,
+  isTaskCompleted,
   layoutDay,
+  materialTypeBadge,
   parseLocal,
   startOfDay,
   taskName,
@@ -49,7 +52,11 @@ export function Timer({
           <img src={`${A}/66a4d.svg`} alt="" />
         </button>
       </Header>
-      <div className={`timer-ring ${running ? "running" : ""} ${phase}`} role="timer" aria-live="off">
+      <div
+        className={`timer-ring ${running ? "running" : ""} ${phase}`}
+        role="timer"
+        aria-live="off"
+      >
         <div className="timer-face">
           <small>{phase === "focus" ? "Pomodoro" : "Pausa"}</small>
           <span>{formatClock(seconds)}</span>
@@ -73,6 +80,7 @@ export function Tasks({
   setOpen,
   onAdd,
   onOpen,
+  onOpenClass,
 }: {
   events: CalEvent[];
   classes: Classroom[];
@@ -80,6 +88,7 @@ export function Tasks({
   setOpen: (subject: string) => void;
   onAdd: () => void;
   onOpen: (id: string) => void;
+  onOpenClass?: (classCode: string) => void;
 }) {
   const subjects = useMemo(() => {
     const present = new Set<string>(DEFAULT_SUBJECTS);
@@ -100,6 +109,7 @@ export function Tasks({
       <div className="subject-list">
         {subjects.map((subject) => {
           const expanded = open === subject.name;
+          const subjectClasses = classes.filter((c) => c.subject === subject.name);
           const tasks = events
             .filter((e) => e.subject === subject.name)
             .sort((a, b) => parseLocal(a.end).getTime() - parseLocal(b.end).getTime());
@@ -121,17 +131,48 @@ export function Tasks({
               </button>
               {expanded && (
                 <div className="task-lines">
-                  {tasks.length === 0 && <span className="task-empty">Nenhuma tarefa por aqui.</span>}
-                  {tasks.map((task) => (
-                    <button
-                      key={task.id}
-                      className={`task-line ${parseLocal(task.end).getTime() < now ? "past" : ""}`}
-                      onClick={() => onOpen(task.id)}
-                    >
-                      <span>•&nbsp; {taskName(task.title)}</span>
-                      <span>{formatShortDate(parseLocal(task.end))}</span>
-                    </button>
-                  ))}
+                  {subjectClasses.length > 0 && onOpenClass && (
+                    <div className="subject-classes-group">
+                      <small className="subject-classes-title">Turmas desta disciplina:</small>
+                      <div className="subject-classes-pills">
+                        {subjectClasses.map((cls) => (
+                          <button
+                            key={cls.code}
+                            type="button"
+                            className="subject-class-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenClass(cls.code);
+                            }}
+                          >
+                            <span>{cls.name}</span>
+                            <span className="subject-class-arrow">Acessar →</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {tasks.length === 0 && (
+                    <span className="task-empty">Nenhuma tarefa por aqui.</span>
+                  )}
+                  {tasks.map((task) => {
+                    const taskClass = task.classCode
+                      ? classes.find((c) => c.code === task.classCode)
+                      : null;
+                    return (
+                      <button
+                        key={task.id}
+                        className={`task-line ${parseLocal(task.end).getTime() < now ? "past" : ""}`}
+                        onClick={() => onOpen(task.id)}
+                      >
+                        <div className="task-line-left">
+                          <span>•&nbsp; {taskName(task.title)}</span>
+                          {taskClass && <span className="task-class-tag">{taskClass.name}</span>}
+                        </div>
+                        <span>{formatShortDate(parseLocal(task.end))}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -207,7 +248,11 @@ export function Calendar({
           {HOURS.map((hour, i) => (
             <div className="hour" key={hour} style={{ height: HOUR_HEIGHT }}>
               <span>{hour}</span>
-              <button className="hour-slot" onClick={() => onSlot(i)} aria-label={`Adicionar evento às ${hour}`} />
+              <button
+                className="hour-slot"
+                onClick={() => onSlot(i)}
+                aria-label={`Adicionar evento às ${hour}`}
+              />
             </div>
           ))}
           {segments.map((seg) => {
@@ -237,7 +282,11 @@ export function Calendar({
             );
           })}
           {today && (
-            <div className="now-line" style={{ top: (nowMin / 60) * HOUR_HEIGHT }} aria-hidden="true" />
+            <div
+              className="now-line"
+              style={{ top: (nowMin / 60) * HOUR_HEIGHT }}
+              aria-hidden="true"
+            />
           )}
         </div>
       </div>
@@ -251,19 +300,20 @@ function minutesNow() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Turmas                                                              */
+/* Turmas (conforme tela "Turmas Criadas - Professor")                 */
 /* ------------------------------------------------------------------ */
 
 export function Classes({
   classes,
   isTeacher,
+  onSelectClass,
   onAdd,
-  onCopy,
 }: {
   classes: Classroom[];
   isTeacher: boolean;
+  onSelectClass: (code: string) => void;
   onAdd: () => void;
-  onCopy: (code: string) => void;
+  onCopy?: (code: string) => void;
 }) {
   return (
     <section className="screen page-enter">
@@ -279,19 +329,221 @@ export function Classes({
         {classes.map((c) => (
           <button
             key={c.code}
+            className="class-card-btn"
             style={{ background: c.color, color: textOn(c.color) }}
-            onClick={() => onCopy(c.code)}
-            title="Toque para copiar o código"
+            onClick={() => onSelectClass(c.code)}
+            title="Toque para acessar a disciplina"
           >
             <strong>{c.name}</strong>
             <span>Código: {c.code}</span>
           </button>
         ))}
       </div>
-      <button className="primary new-class" onClick={onAdd}>
-        <img src={`${A}/ce022.svg`} alt="" />
+      <button className="primary new-class-btn" onClick={onAdd}>
         <span>{isTeacher ? "Nova Turma" : "Entrar em Turma"}</span>
       </button>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Página da Disciplina (conforme tela "Turma Específica - Professor") */
+/* ------------------------------------------------------------------ */
+
+export function PlusCircleIcon({ size = 26 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="8" x2="12" y2="16" />
+      <line x1="8" y1="12" x2="16" y2="12" />
+    </svg>
+  );
+}
+
+export function ClassDetail({
+  classroom,
+  isTeacher,
+  onBack,
+  onAddCategory,
+  onAddMaterial,
+  onAddTask,
+  onOpenFile,
+}: {
+  classroom: Classroom;
+  isTeacher: boolean;
+  onBack: () => void;
+  onAddCategory: () => void;
+  onAddMaterial: (categoryName: string) => void;
+  onAddTask: () => void;
+  onOpenFile: (fileName: string) => void;
+}) {
+  const [openCategories, setOpenCategories] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    if (classroom.categories && classroom.categories.length > 0) {
+      initial[classroom.categories[0].name] = true;
+    }
+    return initial;
+  });
+
+  const toggleCategory = (name: string) => {
+    setOpenCategories((prev) => ({ ...prev, [name]: !prev[name] }));
+  };
+
+  const categories = classroom.categories ?? [];
+  const tasks = classroom.tasks ?? [];
+
+  return (
+    <section className="screen page-enter class-specific-screen">
+      <Header
+        title={
+          <div className="class-specific-header">
+            <button
+              className="class-back-arrow"
+              onClick={onBack}
+              aria-label="Voltar para lista de turmas"
+              title="Voltar"
+            >
+              ←
+            </button>
+            <span className="class-specific-title">{classroom.name}</span>
+          </div>
+        }
+      />
+
+      <div className="class-specific-container">
+        {/* Bloco Materiais */}
+        <div className="materials-block">
+          <div className="block-header">
+            <span className="block-title">Materiais</span>
+            {isTeacher && (
+              <button
+                type="button"
+                className="block-add-btn"
+                onClick={onAddCategory}
+                aria-label="Adicionar Categoria"
+                title="Adicionar Categoria"
+              >
+                <PlusCircleIcon size={26} />
+              </button>
+            )}
+          </div>
+
+          <div className="categories-list">
+            {categories.length === 0 ? (
+              <div className="empty-category-note">
+                <span>Nenhuma categoria de material adicionada ainda.</span>
+              </div>
+            ) : (
+              categories.map((cat, idx) => {
+                const isOpen = openCategories[cat.name] ?? idx === 0;
+                return (
+                  <div key={cat.id || cat.name} className="category-group">
+                    <div
+                      className="category-row"
+                      onClick={() => toggleCategory(cat.name)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) =>
+                        (e.key === "Enter" || e.key === " ") && toggleCategory(cat.name)
+                      }
+                    >
+                      <span className="category-title">{cat.name}</span>
+                      <div className="category-actions" onClick={(e) => e.stopPropagation()}>
+                        {isTeacher && (
+                          <button
+                            type="button"
+                            className="category-add-file-btn"
+                            onClick={() => onAddMaterial(cat.name)}
+                            aria-label={`Adicionar Material em ${cat.name}`}
+                            title={`Adicionar Material em ${cat.name}`}
+                          >
+                            <PlusCircleIcon size={22} />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="category-toggle-btn"
+                          onClick={() => toggleCategory(cat.name)}
+                          aria-label={isOpen ? "Recolher" : "Expandir"}
+                        >
+                          <span className="chevron-arrow">{isOpen ? "▲" : "▼"}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {isOpen && (
+                      <div className="category-files-box">
+                        {cat.files.length === 0 ? (
+                          <span className="file-empty-hint">Nenhum arquivo nesta categoria.</span>
+                        ) : (
+                          cat.files.map((file) => (
+                            <button
+                              key={file.id || file.name}
+                              type="button"
+                              className="category-file-item"
+                              onClick={() => onOpenFile(file.name)}
+                              title="Toque para abrir / baixar arquivo"
+                            >
+                              <span className="file-bullet">•</span>
+                              <span className="file-name">{file.name}</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Bloco Tarefas */}
+        <div className="tasks-block">
+          <div className="block-header">
+            <span className="block-title">Tarefas</span>
+            {isTeacher && (
+              <button
+                type="button"
+                className="block-add-btn"
+                onClick={onAddTask}
+                aria-label="Adicionar Tarefa"
+                title="Adicionar Tarefa"
+              >
+                <PlusCircleIcon size={26} />
+              </button>
+            )}
+          </div>
+
+          <div className="tasks-list-box">
+            {tasks.length === 0 ? (
+              <span className="task-empty-hint">Nenhuma tarefa cadastrada nesta turma.</span>
+            ) : (
+              tasks.map((task) => (
+                <button
+                  key={task.id || task.title}
+                  type="button"
+                  className="task-file-item"
+                  onClick={() => onOpenFile(task.fileName || task.title)}
+                  title="Toque para abrir / baixar tarefa"
+                >
+                  <span>{task.title}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
     </section>
   );
 }
@@ -324,7 +576,8 @@ export function Profile({
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (password && password.length < 6) return setError("A nova senha precisa ter pelo menos 6 caracteres.");
+    if (password && password.length < 6)
+      return setError("A nova senha precisa ter pelo menos 6 caracteres.");
     if (password !== confirm) return setError("As senhas não coincidem.");
     const result = onSave({ name: name.trim(), email, password });
     setError(result);
@@ -345,7 +598,14 @@ export function Profile({
         <p className="role-chip">{user.role === "teacher" ? "Professor" : "Estudante"}</p>
         <div className="profile-fields">
           <Field label="Nome" value={name} onChange={setName} required autoComplete="name" />
-          <Field label="Email" type="email" value={email} onChange={setEmail} required autoComplete="email" />
+          <Field
+            label="Email"
+            type="email"
+            value={email}
+            onChange={setEmail}
+            required
+            autoComplete="email"
+          />
           <Field
             label="Nova senha"
             type="password"
@@ -374,4 +634,3 @@ export function Profile({
     </section>
   );
 }
-
