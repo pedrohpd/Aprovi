@@ -23,7 +23,7 @@ export const allowedScreens = (role: Role): Screen[] =>
   (role === "teacher" ? teacherNav : studentNav).map((i) => i.id);
 
 export function Logo() {
-  return <img className="logo" src={`${A/}44f19.png`} alt="Aprov!" />;
+  return <img className="logo" src={`${A}/44f19.png`} alt="Aprov!" />;
 }
 
 type FieldProps = {
